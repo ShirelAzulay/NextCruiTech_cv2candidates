@@ -1,0 +1,9 @@
+openai
+numpy
+pandas
+faiss-cpu
+pdfplumber
+python-docx
+PyPDF2>=3.0.0
+streamlit
+Pillow
