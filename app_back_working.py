@@ -13,7 +13,7 @@ from src.indexer import build_faiss_index
 from src.matcher import get_topk_matches, gpt_filter_topk
 
 # ---- Configuration ----
-openai.api_key = "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"
+openai.api_key = "sk-..."
 RESUMES_FOLDER = "resumes/"
 JOBS_FOLDER = "jobs/"
 
