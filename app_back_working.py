@@ -13,7 +13,7 @@ from src.indexer import build_faiss_index
 from src.matcher import get_topk_matches, gpt_filter_topk
 
 # ---- Configuration ----
-openai.api_key = "sk-proj-"
+openai.api_key = "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"
 RESUMES_FOLDER = "resumes/"
 JOBS_FOLDER = "jobs/"
 
@@ -145,51 +145,6 @@ def get_base64_of_image(image_path):
             return base64.b64encode(img_file.read()).decode()
     except:
         return None
-
-
-def display_file_content(content, max_lines=10):
-    """Display file content with expand option"""
-    if not content:
-        return "No content available"
-
-    lines = content.split('\n')
-    preview = '\n'.join(lines[:max_lines])
-
-    if len(lines) > max_lines:
-        preview += f"\n... ({len(lines) - max_lines} more lines)"
-
-    return preview
-
-
-def get_quick_analysis(job_text, resume_text, score):
-    """Generate a quick analysis without API calls - token-free!"""
-    # Basic keyword matching for quick insights
-    job_keywords = set(job_text.lower().split()) if job_text else set()
-    resume_keywords = set(resume_text.lower().split()) if resume_text else set()
-
-    # Common tech keywords
-    tech_keywords = {'python', 'java', 'react', 'node', 'aws', 'docker', 'kubernetes', 'sql', 'mongodb',
-                     'javascript', 'typescript', 'angular', 'vue', 'django', 'flask', 'postgresql', 'redis',
-                     'tensorflow', 'pytorch', 'machine learning', 'data science', 'devops', 'jenkins',
-                     'git', 'github', 'linux', 'ubuntu', 'nginx', 'apache', 'microservices', 'api'}
-
-    common_tech = job_keywords.intersection(resume_keywords).intersection(tech_keywords)
-
-    # Experience indicators
-    experience_keywords = {'senior', 'lead', 'manager', 'architect', 'principal', 'director'}
-    experience_match = job_keywords.intersection(resume_keywords).intersection(experience_keywords)
-
-    # Generate quick insights
-    analysis = f"""🎯 ניתוח מהיר (ללא עלות טוקנים):
-ציון התאמה: {score:.1%}
-
-📊 טכנולוגיות משותפות: {', '.join(sorted(common_tech)) if common_tech else 'לא נמצאו'}
-
-👔 רמות תפקיד משותפות: {', '.join(sorted(experience_match)) if experience_match else 'לא זוהו'}
-
-💡 לניתוח מעמיק עם Red Flags ו-AI - לחץ על 'ניתוח AI מלא' למטה"""
-
-    return analysis.strip()
 
 
 def extract_recommendation(explanation_text):
@@ -390,10 +345,6 @@ def run_matching_process(threshold, top_k, filter_prompt, lazy_explanations=True
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Statistics tracking for filtering
-    total_candidates_before = 0
-    total_candidates_after = 0
-
     for i, (job_id, job_data) in enumerate(job_embeddings.items()):
         # Update progress
         progress = (i + 1) / total_jobs
@@ -408,36 +359,12 @@ def run_matching_process(threshold, top_k, filter_prompt, lazy_explanations=True
         # Get top K matches - THIS IS FAST (milliseconds)
         candidates = get_topk_matches(index, res_embeddings, resume_ids, job_emb, top_k=top_k)
 
-        # Track candidates before filtering
-        candidates_before = len(candidates)
-        total_candidates_before += candidates_before
-
-        # FIXED: Apply GPT filter in both Quick Mode and Full AI Analysis mode
-        if filter_prompt and filter_prompt.strip():
+        # Apply GPT filter ONLY if provided and not using quick mode
+        if filter_prompt and filter_prompt.strip() and not use_quick_recommendation:
             try:
-                status_text.text(f"🔍 Processing: {job_name} - Applying filter...")
-
-                # Debug: Log filter details
-                st.write(f"🔍 DEBUG: About to filter {len(candidates)} candidates with: '{filter_prompt}'")
-
                 candidates = gpt_filter_topk(client, candidates, filter_prompt)
-
-                # Display filtering information
-                candidates_after = len(candidates)
-                st.write(f"📊 {job_name}: {candidates_before} → {candidates_after} candidates after filtering")
-
-                # Debug: Show which candidates passed
-                if candidates_after > 0:
-                    passed_names = [c["resume_id"].split('|')[1] for c in candidates[:3]]  # Show first 3
-                    st.write(f"🔍 DEBUG: First candidates who passed: {', '.join(passed_names)}")
-
             except Exception as e:
-                st.error(f"Filter failed for {job_name}: {str(e)}")
-                candidates_after = candidates_before
-        else:
-            candidates_after = candidates_before
-
-        total_candidates_after += candidates_after
+                st.warning(f"Filter failed for {job_name}: {str(e)}")
 
         # Store matches above threshold
         for item in candidates:
@@ -445,15 +372,10 @@ def run_matching_process(threshold, top_k, filter_prompt, lazy_explanations=True
                 resume_text = item["resume_text"]
                 resume_name = item["resume_id"].split('|')[1] if '|' in item["resume_id"] else item["resume_id"]
 
-                # OPTIMIZED: Quick analysis without API calls
+                # Quick recommendation based on score
                 if use_quick_recommendation:
                     recommendation, rec_text = get_quick_recommendation(item["score"], threshold)
-                    # Use quick analysis instead of API call
-                    explanation = get_quick_analysis(job_text, resume_text, item["score"])
-
-                    # Add filtering information if applied
-                    if filter_prompt and filter_prompt.strip():
-                        explanation += f"\n✅ עבר סינון GPT: '{filter_prompt[:50]}...'"
+                    explanation = f"המלצה מהירה על בסיס התאמת Embeddings: {rec_text}\nציון התאמה: {item['score']:.1%}"
                 else:
                     # Generate full explanation only if needed
                     explanation = ""
@@ -478,22 +400,6 @@ def run_matching_process(threshold, top_k, filter_prompt, lazy_explanations=True
 
     progress_bar.empty()
     status_text.empty()
-
-    # Display filtering statistics if filter was applied
-    if filter_prompt and filter_prompt.strip():
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("🔍 Found Initially", total_candidates_before)
-        with col2:
-            st.metric("✅ Passed Filter", total_candidates_after)
-        with col3:
-            if total_candidates_before > 0:
-                filter_rate = (total_candidates_after / total_candidates_before) * 100
-                st.metric("📈 Pass Rate", f"{filter_rate:.1f}%")
-            else:
-                st.metric("📈 Pass Rate", "0%")
-
-        st.info(f"🔍 **Filter Applied:** {filter_prompt}")
 
     return pd.DataFrame(results) if results else None
 
@@ -537,7 +443,7 @@ with st.sidebar:
     filter_prompt = st.text_area(
         "Filter Prompt (Hebrew/English)",
         placeholder="e.g., מועמד עם ניסיון של מעל 3 שנים בפיתוח",
-        help="FIXED: Now works in both Quick Mode and Full Analysis!",
+        help="Describe your ideal candidate",
         height=100
     )
 
@@ -551,9 +457,9 @@ with st.sidebar:
     st.markdown("### 🚀 Speed vs Quality Trade-off")
     analysis_mode = st.radio(
         "Choose analysis mode:",
-        ["⚡ Quick Mode (Token-Free Analysis)", "🤖 Full AI Analysis (Uses Tokens)"],
+        ["⚡ Quick Mode (Instant)", "🤖 Full AI Analysis (Slower)"],
         index=0,
-        help="Quick Mode: FREE instant analysis. Full AI: Detailed analysis with Red Flags (costs tokens)"
+        help="Quick Mode uses embedding scores only. Full Analysis uses GPT for detailed insights."
     )
 
     use_quick_mode = analysis_mode.startswith("⚡")
@@ -566,52 +472,11 @@ with st.sidebar:
         lazy_explanations = True
         auto_analyze_recommended = False
         st.info(
-            "💡 Quick Mode: רק ציון התאמה בסיסי. לחץ על 'ניתוח AI מלא' למועמדים מעניינים לקבלת ניתוח מדויק.")
+            "💡 Quick Mode: Instant recommendations based on similarity scores. Click on candidates for detailed AI analysis.")
 
     st.session_state.include_details_in_csv = st.checkbox("📝 Include detailed analysis in CSV export", value=True)
 
     run_button = st.button("🚀 Run Matching", type="primary", use_container_width=True)
-
-    # Batch AI Analysis option
-    if st.session_state.results_ready and st.session_state.get('quick_mode', False):
-        st.markdown("---")
-        st.markdown("### 🧠 AI Analysis Options")
-
-        df = st.session_state.get('results_df', pd.DataFrame())
-        if not df.empty:
-            unanalyzed_count = len(df[df['quick_mode'] == True])
-            if unanalyzed_count > 0:
-                cost_estimate = unanalyzed_count * 0.002  # Rough estimate
-
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    if st.button(f"🚨 Analyze {unanalyzed_count} candidates with AI", type="secondary"):
-                        with st.spinner(f"Analyzing {unanalyzed_count} candidates..."):
-                            client = OpenAI(api_key=openai.api_key)
-                            progress_bar = st.progress(0)
-
-                            quick_mode_indices = df[df['quick_mode'] == True].index
-                            for i, idx in enumerate(quick_mode_indices):
-                                row = df.loc[idx]
-                                progress_bar.progress((i + 1) / len(quick_mode_indices))
-
-                                explanation = get_detailed_explanation(
-                                    client, row['job_text'], row['resume_text'],
-                                    filter_prompt, row['Score']
-                                )
-                                st.session_state.results_df.loc[idx, 'Explanation'] = explanation
-                                st.session_state.results_df.loc[idx, 'quick_mode'] = False
-                                rec = extract_recommendation(explanation)
-                                st.session_state.results_df.loc[idx, 'recommendation'] = rec
-
-                            progress_bar.empty()
-                            st.success(f"✅ Analyzed {unanalyzed_count} candidates!")
-                            st.rerun()
-
-                with col2:
-                    st.caption(f"💰 ~${cost_estimate:.2f}")
-            else:
-                st.info("✅ All candidates analyzed")
 
     # Quick rerun for threshold/filter changes
     if st.session_state.results_ready:
@@ -699,14 +564,14 @@ if st.session_state.results_ready and 'results_df' in st.session_state:
         # Filter controls
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
-            search_query = st.text_input("🔍 Search results", label_visibility="visible")
+            search_query = st.text_input("🔍 Search results")
         with col2:
             if st.button("✅ Show Only Recommended",
                          type="primary" if not st.session_state.show_only_recommended else "secondary",
                          use_container_width=True):
                 # First generate all missing analyses
                 if not st.session_state.show_only_recommended:
-                    with st.spinner('🔍 Analyzing all candidates...'):
+                    with st.spinner('🔍 מנתח את כל המועמדים...'):
                         client = OpenAI(api_key=openai.api_key)
                         progress_bar = st.progress(0)
 
@@ -799,51 +664,23 @@ if st.session_state.results_ready and 'results_df' in st.session_state:
                         st.error("❌ Not Recommended")
 
                 with col2:
-                    # FIXED: Remove nested expander - show content directly
-
-                    # File contents section
-                    st.markdown("### 📄 תוכן הקבצים")
-                    col_job, col_resume = st.columns(2)
-
-                    with col_job:
-                        st.markdown("**📋 תיאור המשרה:**")
-                        job_preview = display_file_content(row['job_text'])
-                        st.text_area("", job_preview, height=120, key=f"job_{idx}", disabled=True)
-
-                    with col_resume:
-                        st.markdown("**👤 קורות חיים:**")
-                        resume_preview = display_file_content(row['resume_text'])
-                        st.text_area("", resume_preview, height=120, key=f"resume_{idx}", disabled=True)
-
-                    st.markdown("---")  # Separator
-
-                    # Analysis section based on mode
-                    if row.get('quick_mode', False):
-                        # Quick mode - show basic analysis
-                        st.markdown("**🚀 ניתוח מהיר (ללא עלות טוקנים):**")
+                    # Show explanation or load on demand
+                    if row.get('quick_mode', False) and '(Instant)' in analysis_mode:
+                        # In quick mode, show quick recommendation
+                        st.markdown("**המלצה מהירה:**")
                         st.info(row['Explanation'])
-
-                        # Option for full AI analysis
-                        col_ai1, col_ai2 = st.columns([1, 1])
-                        with col_ai1:
-                            if st.button(f"🧠 ניתוח AI מלא + Red Flags", key=f"full_analyze_{idx}", type="secondary"):
-                                with st.spinner("🤖 מפעיל ניתוח AI מתקדם..."):
-                                    client = OpenAI(api_key=openai.api_key)
-                                    explanation = get_detailed_explanation(
-                                        client, row['job_text'], row['resume_text'], filter_prompt, row['Score']
-                                    )
-                                    # Update dataframe
-                                    st.session_state.results_df.loc[idx, 'Explanation'] = explanation
-                                    st.session_state.results_df.loc[idx, 'quick_mode'] = False
-                                    # Update recommendation
-                                    rec = extract_recommendation(explanation)
-                                    st.session_state.results_df.loc[idx, 'recommendation'] = rec
-                                    st.rerun()
-
-                        with col_ai2:
-                            cost_estimate = len(row['job_text'][:1500] + row['resume_text'][:2000]) / 4 * 0.0015 / 1000
-                            st.caption(f"💰 עלות משוערת: ~${cost_estimate:.3f}")
-
+                        if st.button(f"🔍 בקש ניתוח AI מפורט", key=f"analyze_{idx}"):
+                            client = OpenAI(api_key=openai.api_key)
+                            explanation = get_detailed_explanation(
+                                client, row['job_text'], row['resume_text'], filter_prompt, row['Score']
+                            )
+                            # Update dataframe
+                            st.session_state.results_df.loc[idx, 'Explanation'] = explanation
+                            st.session_state.results_df.loc[idx, 'quick_mode'] = False
+                            # Update recommendation
+                            rec = extract_recommendation(explanation)
+                            st.session_state.results_df.loc[idx, 'recommendation'] = rec
+                            st.rerun()
                     elif st.session_state.get('lazy_mode', False) and not row['Explanation']:
                         if st.button(f"🔍 הצג ניתוח מפורט", key=f"analyze_{idx}"):
                             # Initialize client
@@ -858,8 +695,7 @@ if st.session_state.results_ready and 'results_df' in st.session_state:
                             st.session_state.results_df.loc[idx, 'recommendation'] = rec
                             st.rerun()
                     else:
-                        # Full analysis mode
-                        st.markdown("**🧠 ניתוח AI מתקדם:**")
+                        st.markdown("**ניתוח מתקדם:**")
                         explanation_text = row['Explanation'] if row[
                             'Explanation'] else "לחץ על 'הצג ניתוח מפורט' למעלה"
                         st.markdown(
@@ -969,6 +805,6 @@ if st.session_state.results_ready and 'results_df' in st.session_state:
 
 # ---- Footer ----
 st.markdown(
-    "<div style='position: fixed; bottom: 20px; right: 20px; background-color: #16213e; padding: 10px 20px; border-radius: 20px; border: 1px solid #e94560;'>Built with ❤️ by Nexcruitech</div>",
+    "<div style='position: fixed; bottom: 20px; right: 20px; background-color: #16213e; padding: 10px 20px; border-radius: 20px; border: 1px solid #e94560;'>Built with ❤️ by NexCruiTech</div>",
     unsafe_allow_html=True
 )
