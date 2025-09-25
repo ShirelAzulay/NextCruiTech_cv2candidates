@@ -13,7 +13,7 @@ from src.indexer import build_faiss_index
 from src.matcher import get_topk_matches, gpt_filter_topk
 
 # ---- Configuration ----
-openai.api_key = "sk-XXXXX"
+openai.api_key = "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Replace with your OpenAI API key
 RESUMES_FOLDER = "resumes/"
 JOBS_FOLDER = "jobs/"
 
