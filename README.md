@@ -1,4 +1,4 @@
-# nct – NextCruitech Candidates App
+# nct – NexCruitech Candidates App
 
 An interactive system for analyzing candidates, built with **Streamlit** and designed to run within a virtual environment (venv).  
 The UI supports resume parsing, prompt-based interactions, and AI-powered modules.
